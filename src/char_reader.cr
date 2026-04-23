@@ -17,6 +17,7 @@ module Reply
       CTRL_E
       CTRL_F
       CTRL_K
+      CTRL_L
       CTRL_N
       CTRL_P
       CTRL_R
@@ -138,6 +139,8 @@ module Reply
         Sequence::CTRL_F
       when ctrl('k')
         Sequence::CTRL_K
+      when ctrl('l')
+        Sequence::CTRL_L
       when ctrl('n')
         Sequence::CTRL_N
       when ctrl('p')
