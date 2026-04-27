@@ -272,6 +272,7 @@ module Reply
         in .alt_b?          then @editor.move_word_backward
         in .ctrl_delete?    then @editor.update { delete_word }
         in .alt_d?          then on_alt_d
+        in .ctrl_l?         then on_ctrl_l
         in .ctrl_c?         then on_ctrl_c
         in .ctrl_r?         then on_ctrl_r
         in .ctrl_d?
@@ -421,6 +422,14 @@ module Reply
 
     private def on_ctrl_right(& : String ->)
       @editor.move_word_forward
+    end
+
+    # Option to use ANSI code to clear screen
+    # Should work on all modern terminals
+    #
+    # TODO: Test on a working Windows 10/11 environment.
+    private def on_ctrl_l
+      print "\x1Bc"
     end
 
     private def on_ctrl_c
