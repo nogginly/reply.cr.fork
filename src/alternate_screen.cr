@@ -23,8 +23,8 @@ module Reply
       @height || Term::Size.height
     end
 
-    def self.open(text, color? = true)
-      new(text, color?).open
+    def self.open(text, color = true)
+      new(text, color).open
     end
 
     def open
