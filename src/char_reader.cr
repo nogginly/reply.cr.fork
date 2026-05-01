@@ -22,6 +22,7 @@ module Reply
       CTRL_P
       CTRL_R
       CTRL_U
+      CTRL_V
       CTRL_X
       CTRL_UP
       CTRL_DOWN
@@ -149,6 +150,8 @@ module Reply
         Sequence::CTRL_R
       when ctrl('u')
         Sequence::CTRL_U
+      when ctrl('v')
+        Sequence::CTRL_V
       when ctrl('x')
         Sequence::CTRL_X
       when '\0'.ord

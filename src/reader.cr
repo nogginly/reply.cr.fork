@@ -4,6 +4,7 @@ require "./char_reader"
 require "./auto_completion"
 require "./search"
 require "./alternate_screen"
+require "./clipboard"
 
 module Reply
   # Reader for your REPL.
@@ -56,6 +57,20 @@ module Reply
     @char_reader = CharReader.new
     @search = Search.new
     getter line_number = 1
+    property footer_message : String? = nil
+
+    # Enable `ctrl-c` / `ctrl-x` / `ctrl-v` to respectively copy, cut, and past from clipboard.
+    # * On linux: `xclip` is used
+    # * On darwin: `pbcopy`/`pbpaste` is used
+    # * On windows: `clip`/`powershell` is used
+    #
+    # if current edition is empty, `ctrl-c` and `ctrl-x` will not trigger copy but use the default behavior
+    #
+    # This option is disabled by default because running a sub-process will cause the program to
+    # hang if a crystal-interpreter is running (for ic or crystal-i).
+    #
+    # See: https://github.com/crystal-lang/crystal/issues/12241
+    property? enable_clipboard_shortcut = false
 
     delegate :color?, :color=, :lines, :output, :output=, to: @editor
     delegate :word_delimiters, :word_delimiters=, to: @editor
@@ -78,7 +93,12 @@ module Reply
       end
 
       @editor.set_footer do |io, _previous_height|
-        if (entry = @auto_completion.current_entry?) && (summary = documentation_summary(entry))
+        if msg = @footer_message
+          io.print msg
+
+          uncolorized = msg.to_s.gsub(/\e\[.*?m/, "")
+          1 + (uncolorized.size) // (@editor.width + 1)
+        elsif (entry = @auto_completion.current_entry?) && (summary = documentation_summary(entry))
           io.print summary
 
           uncolorized = summary.to_s.gsub(/\e\[.*?m/, "")
@@ -236,6 +256,7 @@ module Reply
       @editor.prompt_next
 
       loop do
+        @footer_message = nil
         read = @char_reader.read_char(from: io)
 
         @editor.width, @editor.height = Term::Size.size
@@ -274,6 +295,7 @@ module Reply
         in .alt_d?          then on_alt_d
         in .ctrl_l?         then on_ctrl_l
         in .ctrl_c?         then on_ctrl_c
+        in .ctrl_v?         then on_ctrl_v
         in .ctrl_r?         then on_ctrl_r
         in .ctrl_d?
           if @editor.empty?
@@ -282,7 +304,14 @@ module Reply
           else
             @editor.update { delete }
           end
-        in .eof?, .ctrl_x?
+        in .ctrl_x?
+          if @editor.empty?
+            output.puts
+            return nil
+          else
+            on_ctrl_x
+          end
+        in .eof?
           output.puts
           return nil
         end
@@ -426,19 +455,37 @@ module Reply
 
     # Option to use ANSI code to clear screen
     # Should work on all modern terminals
-    #
-    # TODO: Test on a working Windows 10/11 environment.
     private def on_ctrl_l
       print "\x1Bc"
     end
 
     private def on_ctrl_c
-      @auto_completion.close
-      @search.close
-      @editor.end_editing
-      output.puts "^C"
-      @history.set_to_last
-      @editor.prompt_next
+      if @editor.empty? || enable_clipboard_shortcut? == false
+        @auto_completion.close
+        @search.close
+        @editor.end_editing
+        output.puts "^C"
+        @history.set_to_last
+        @editor.prompt_next
+      else
+        Clipboard.copy(@editor.expression)
+        @footer_message = "Copied".colorize.dark_gray.toggle(color?).to_s
+      end
+    end
+
+    private def on_ctrl_x
+      return unless enable_clipboard_shortcut?
+
+      Clipboard.copy(@editor.expression)
+      @footer_message = "Cut".colorize.dark_gray.toggle(color?).to_s
+      @editor.update { @editor.clear_expression }
+    end
+
+    private def on_ctrl_v
+      return unless enable_clipboard_shortcut?
+
+      @editor.update { @editor << Clipboard.paste }
+      @footer_message = "Pasted".colorize.dark_gray.toggle(color?).to_s
     end
 
     private def on_alt_d
