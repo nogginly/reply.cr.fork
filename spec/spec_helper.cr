@@ -212,7 +212,7 @@ module Reply
 
     def self.send(io, value)
       io << value
-      Fiber.yield
+      sleep 1.millisecond
     end
   end
 end

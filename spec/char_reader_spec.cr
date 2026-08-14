@@ -62,6 +62,29 @@ module Reply
       {% end %}
     end
 
+    it "read kitty protocol input" do
+      reader = SpecHelper.char_reader
+
+      reader.verify_read("\e[13;2u", expect: :shift_enter)
+      reader.verify_read("\e[9;2u", expect: :shift_tab)
+      reader.verify_read("\e[13;3u", expect: :alt_enter)
+      reader.verify_read("\e[13;5u", expect: :ctrl_enter)
+      reader.verify_read("\e[#{'d'.ord};3u", expect: :alt_d)
+      reader.verify_read("\e[#{'a'.ord};5u", expect: :ctrl_a)
+      reader.verify_read("\e[27u", expect: :escape)
+
+      # event-type suffix: press (default) and repeat trigger
+      reader.verify_read("\e[13;2:1u", expect: :shift_enter)
+      reader.verify_read("\e[13;2:2u", expect: :shift_enter)
+
+      # release is ignored and falls back to the raw sequence like any other unrecognized escape sequence
+      reader.verify_read("\e[13;2:3u", expect: ["\e[13;2:3u"])
+
+      # two-digit modifier must be parsed as a whole number, not just its first digit
+      # (mod 20 starts with '2' but isn't SHIFT and must not be mistaken for it)
+      reader.verify_read("\e[13;20u", expect: ["\e[13;20u"])
+    end
+
     it "read large buffer" do
       reader = SpecHelper.char_reader(buffer_size: 1024)
 
