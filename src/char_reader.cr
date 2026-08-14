@@ -38,6 +38,7 @@ module Reply
       ALT_BACKSPACE
       TAB
       SHIFT_TAB
+      SHIFT_ENTER
       HOME
       END
     end
@@ -51,7 +52,58 @@ module Reply
       parse_escape_sequence(@slice_buffer[0...nb_read])
     end
 
+    # Parse CSI u key sequences if app has enabled CSI u mode
+    private def handle_kitty_protocol(chars : Bytes) : Sequence?
+      if {chars.first?, chars[1]?, chars.last?} == {'\e'.ord, '['.ord, 'u'.ord}
+        # CSI u (Kitty input mode) detected
+        if semi = chars.index(';'.ord)
+          key_val = String.new(chars[2...semi]).to_i32
+          key_mod = chars[semi + 1] - '0'.ord
+          case key_mod
+          when 2 # SHIFT
+            case key_val
+            when '\r'.ord then Sequence::SHIFT_ENTER
+            when '\t'.ord then Sequence::SHIFT_TAB
+            end
+          when 3 # ALT
+            case key_val
+            when '\r'.ord then Sequence::ALT_ENTER
+            when 'd'.ord  then Sequence::ALT_D
+            when 0x7f     then Sequence::ALT_BACKSPACE
+            end
+          when 5 # CTRL
+            case key_val
+            when '\r'.ord then Sequence::CTRL_ENTER
+            when 'a'.ord  then Sequence::CTRL_A
+            when 'b'.ord  then Sequence::CTRL_B
+            when 'c'.ord  then Sequence::CTRL_C
+            when 'd'.ord  then Sequence::CTRL_D
+            when 'e'.ord  then Sequence::CTRL_E
+            when 'f'.ord  then Sequence::CTRL_F
+            when 'k'.ord  then Sequence::CTRL_K
+            when 'l'.ord  then Sequence::CTRL_L
+            when 'n'.ord  then Sequence::CTRL_N
+            when 'p'.ord  then Sequence::CTRL_P
+            when 'r'.ord  then Sequence::CTRL_R
+            when 'u'.ord  then Sequence::CTRL_U
+            when 'v'.ord  then Sequence::CTRL_V
+            when 'x'.ord  then Sequence::CTRL_X
+            end
+          end
+        else
+          key_val = String.new(chars[2...chars.size - 1]).to_i32
+          case key_val
+          when 27 then Sequence::ESCAPE
+          end
+        end
+      end
+    end
+
     private def parse_escape_sequence(chars : Bytes) : Char | Sequence | String?
+      if seq = handle_kitty_protocol(chars)
+        return seq
+      end
+
       return String.new(chars) if chars.size > 6
       return Sequence::EOF if chars.empty?
 

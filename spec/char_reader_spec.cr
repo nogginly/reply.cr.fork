@@ -54,6 +54,12 @@ module Reply
       reader.verify_read('\u0015', expect: :ctrl_u)
       reader.verify_read('\u0018', expect: :ctrl_x)
 
+      reader.verify_read("\e[13;2u", expect: :shift_enter)
+      reader.verify_read("\e[9;2u", expect: :shift_tab)
+      reader.verify_read("\e[13;3u", expect: :alt_enter)
+      reader.verify_read("\e[13;5u", expect: :ctrl_enter)
+      reader.verify_read("\e[#{'d'.ord};3u", expect: :alt_d)
+
       {% if flag?(:win32) %}
         reader.verify_read('\n', expect: :ctrl_enter)
         reader.verify_read('\r', expect: :enter)
