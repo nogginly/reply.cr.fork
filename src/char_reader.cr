@@ -52,49 +52,72 @@ module Reply
       parse_escape_sequence(@slice_buffer[0...nb_read])
     end
 
-    # Parse CSI u key sequences if app has enabled CSI u mode
+    # Parse CSI u key sequences (Kitty keyboard protocol), if the app has enabled it.
+    #
+    # Format: `CSI key_code [; modifier [: event_type]] u`
+    # * `modifier` is `1 + bitmask` (shift=1, alt=2, ctrl=4, super=8), so e.g. `6` means
+    #   shift+ctrl. It can be more than one digit (up to `16`), so it's parsed as a full
+    #   number rather than a single byte.
+    # * `event_type` is only present when the app also requested event reporting:
+    #   `1` = press (default when absent), `2` = repeat, `3` = release. We treat press and
+    #   repeat as the trigger and ignore release, so the shard stays usable even if an app
+    #   enables more than plain disambiguation.
     private def handle_kitty_protocol(chars : Bytes) : Sequence?
-      if {chars.first?, chars[1]?, chars.last?} == {'\e'.ord, '['.ord, 'u'.ord}
-        # CSI u (Kitty input mode) detected
-        if semi = chars.index(';'.ord)
-          key_val = String.new(chars[2...semi]).to_i32
-          key_mod = chars[semi + 1] - '0'.ord
-          case key_mod
-          when 2 # SHIFT
-            case key_val
-            when '\r'.ord then Sequence::SHIFT_ENTER
-            when '\t'.ord then Sequence::SHIFT_TAB
-            end
-          when 3 # ALT
-            case key_val
-            when '\r'.ord then Sequence::ALT_ENTER
-            when 'd'.ord  then Sequence::ALT_D
-            when 0x7f     then Sequence::ALT_BACKSPACE
-            end
-          when 5 # CTRL
-            case key_val
-            when '\r'.ord then Sequence::CTRL_ENTER
-            when 'a'.ord  then Sequence::CTRL_A
-            when 'b'.ord  then Sequence::CTRL_B
-            when 'c'.ord  then Sequence::CTRL_C
-            when 'd'.ord  then Sequence::CTRL_D
-            when 'e'.ord  then Sequence::CTRL_E
-            when 'f'.ord  then Sequence::CTRL_F
-            when 'k'.ord  then Sequence::CTRL_K
-            when 'l'.ord  then Sequence::CTRL_L
-            when 'n'.ord  then Sequence::CTRL_N
-            when 'p'.ord  then Sequence::CTRL_P
-            when 'r'.ord  then Sequence::CTRL_R
-            when 'u'.ord  then Sequence::CTRL_U
-            when 'v'.ord  then Sequence::CTRL_V
-            when 'x'.ord  then Sequence::CTRL_X
-            end
-          end
-        else
-          key_val = String.new(chars[2...chars.size - 1]).to_i32
-          case key_val
-          when 27 then Sequence::ESCAPE
-          end
+      return unless chars.size >= 4 &&
+                    chars.first? == '\e'.ord &&
+                    chars[1]? == '['.ord && chars.last? == 'u'.ord
+
+      body = chars[2...chars.size - 1] # strip leading "ESC [" and trailing "u"
+      semi = body.index(';'.ord)
+
+      key_val = String.new(semi ? body[0...semi] : body).to_i32?
+      return unless key_val
+
+      return Sequence::ESCAPE if !semi && key_val == 27
+      return unless semi
+
+      mod_field = body[(semi + 1)..]
+      colon = mod_field.index(':'.ord)
+      mod_str = colon ? mod_field[0...colon] : mod_field
+      event_str = colon ? mod_field[(colon + 1)..] : nil
+
+      # Ignore key-release events; only press (no event field) and repeat trigger an action.
+      return if event_str && String.new(event_str).to_i32? == 3
+
+      key_mod = String.new(mod_str).to_i32?
+      return unless key_mod
+
+      # Only combos REPLy already has a shortcut for are mapped here. Anything else (e.g.
+      # shift+ctrl, shift+alt+ctrl) falls through to nil and the default fallback below.
+      case key_mod
+      when 2 # SHIFT
+        case key_val
+        when '\r'.ord then Sequence::SHIFT_ENTER
+        when '\t'.ord then Sequence::SHIFT_TAB
+        end
+      when 3 # ALT
+        case key_val
+        when '\r'.ord then Sequence::ALT_ENTER
+        when 'd'.ord  then Sequence::ALT_D
+        when 0x7f     then Sequence::ALT_BACKSPACE
+        end
+      when 5 # CTRL
+        case key_val
+        when '\r'.ord then Sequence::CTRL_ENTER
+        when 'a'.ord  then Sequence::CTRL_A
+        when 'b'.ord  then Sequence::CTRL_B
+        when 'c'.ord  then Sequence::CTRL_C
+        when 'd'.ord  then Sequence::CTRL_D
+        when 'e'.ord  then Sequence::CTRL_E
+        when 'f'.ord  then Sequence::CTRL_F
+        when 'k'.ord  then Sequence::CTRL_K
+        when 'l'.ord  then Sequence::CTRL_L
+        when 'n'.ord  then Sequence::CTRL_N
+        when 'p'.ord  then Sequence::CTRL_P
+        when 'r'.ord  then Sequence::CTRL_R
+        when 'u'.ord  then Sequence::CTRL_U
+        when 'v'.ord  then Sequence::CTRL_V
+        when 'x'.ord  then Sequence::CTRL_X
         end
       end
     end
